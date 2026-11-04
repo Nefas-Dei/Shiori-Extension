@@ -1,0 +1,152 @@
+:root {
+    color-scheme: light dark;
+    --bg: #171716;
+    --fg: #f2f2ee;
+    --muted: #a3a39d;
+    --line: #343432;
+    --accent: #8fc9a9;
+    --error: #f0a3a3;
+}
+
+@media (prefers-color-scheme: light) {
+    :root {
+        --bg: #fafaf8;
+        --fg: #171716;
+        --muted: #676761;
+        --line: #deded9;
+        --accent: #1f4d3a;
+        --error: #8a1f1f;
+    }
+}
+
+* {
+    box-sizing: border-box;
+}
+
+body {
+    width: 340px;
+    margin: 0;
+    background: var(--bg);
+    color: var(--fg);
+    font: 14px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+
+main {
+    padding: 18px;
+}
+
+header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 16px;
+}
+
+h1 {
+    font-size: 17px;
+    font-weight: 650;
+    letter-spacing: -0.01em;
+    margin: 0;
+}
+
+.badge {
+    font: 10px/1.4 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--muted);
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    padding: 2px 7px;
+    white-space: nowrap;
+}
+
+.badge.ok {
+    color: var(--accent);
+    border-color: var(--accent);
+}
+
+.badge.error {
+    color: var(--error);
+    border-color: var(--error);
+}
+
+dl {
+    margin: 0;
+    border-top: 1px solid var(--line);
+}
+
+dl > div {
+    display: flex;
+    justify-content: space-between;
+    gap: 14px;
+    padding: 9px 0;
+    border-bottom: 1px solid var(--line);
+}
+
+dt {
+    color: var(--muted);
+    flex-shrink: 0;
+}
+
+dd {
+    margin: 0;
+    text-align: right;
+    overflow-wrap: anywhere;
+}
+
+.actions {
+    display: flex;
+    gap: 8px;
+    margin-top: 16px;
+}
+
+button {
+    flex: 1;
+    appearance: none;
+    border: 1px solid var(--line);
+    background: transparent;
+    color: var(--fg);
+    border-radius: 7px;
+    padding: 8px 10px;
+    font: inherit;
+    font-size: 13px;
+    cursor: pointer;
+}
+
+button:hover {
+    border-color: var(--muted);
+}
+
+button.primary {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: var(--bg);
+    font-weight: 600;
+}
+
+button:disabled {
+    opacity: 0.5;
+    cursor: default;
+}
+
+.note {
+    margin: 14px 0 0;
+    color: var(--muted);
+    font-size: 12px;
+}
+
+.status {
+    min-height: 20px;
+    margin-top: 10px;
+    color: var(--muted);
+    font-size: 12px;
+}
+
+.status.error {
+    color: var(--error);
+}
+
+.status.ok {
+    color: var(--accent);
+}

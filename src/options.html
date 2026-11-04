@@ -1,0 +1,217 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Shiori Reading Sync — Options</title>
+    <link rel="stylesheet" href="options.css">
+</head>
+<body>
+<main>
+    <header>
+        <div>
+            <h1>Shiori Reading Sync</h1>
+            <p>Send exact chapter and scroll progress from your browser to your Shiori app.</p>
+        </div>
+        <span class="badge">v0.1.0</span>
+    </header>
+
+    <section aria-labelledby="server-heading">
+        <div class="section-head">
+            <div>
+                <h2 id="server-heading">Sync server</h2>
+                <p>The custom tracker server stores chapter, percentage, paragraph and updated_at for every series.</p>
+            </div>
+            <button type="button" id="add-tracker">Add server</button>
+        </div>
+
+        <div id="tracker-list"></div>
+
+        <form class="form hidden" id="tracker-form" autocomplete="off">
+            <input type="hidden" id="tracker-id">
+            <div class="grid">
+                <div>
+                    <label for="tracker-name">Name</label>
+                    <input id="tracker-name" type="text" placeholder="Home server" required>
+                </div>
+                <div>
+                    <label for="tracker-url">Server URL</label>
+                    <input id="tracker-url" type="url" placeholder="https://sync.example.com" required>
+                    <div class="hint">The base URL only, without <code>/api/v1</code>.</div>
+                </div>
+                <div class="full">
+                    <label for="tracker-token">API token</label>
+                    <input id="tracker-token" type="password" placeholder="Token shared with the Shiori app" required>
+                    <div class="hint">Stored in this browser profile only. Never sent anywhere except the server above.</div>
+                </div>
+            </div>
+            <div class="form-actions">
+                <button type="submit" class="primary" id="save-tracker">Save server</button>
+                <button type="button" id="test-tracker">Test connection</button>
+                <button type="button" id="cancel-tracker">Cancel</button>
+            </div>
+            <div class="status" id="tracker-status" role="status"></div>
+        </form>
+    </section>
+
+    <section aria-labelledby="sites-heading">
+        <div class="section-head">
+            <div>
+                <h2 id="sites-heading">Reading sites</h2>
+                <p>Built-in profiles cover NovelUpdates and NovelList. Add the site you actually read on for exact position tracking. The generic fallback is off by default to avoid tracking unrelated pages.</p>
+            </div>
+            <button type="button" id="add-site">Add site</button>
+        </div>
+
+        <div id="site-list"></div>
+
+        <form class="form hidden" id="site-form" autocomplete="off">
+            <input type="hidden" id="site-id">
+            <div class="grid">
+                <div>
+                    <label for="site-name">Name</label>
+                    <input id="site-name" type="text" placeholder="My reader" required>
+                </div>
+                <div>
+                    <label for="site-host">Host</label>
+                    <input id="site-host" type="text" placeholder="reader.example.com" required>
+                    <div class="hint">Subdomains are included automatically. Use <code>*</code> only for the generic fallback.</div>
+                </div>
+                <div>
+                    <label for="site-mode">Page type</label>
+                    <select id="site-mode">
+                        <option value="chapter">Chapter page (exact position)</option>
+                        <option value="series">Series page (chapter links)</option>
+                    </select>
+                </div>
+                <div>
+                    <label for="site-title-selector">Series title selector</label>
+                    <input id="site-title-selector" type="text" placeholder="h1, .novel-title">
+                </div>
+            </div>
+
+            <details>
+                <summary>Advanced selectors and heuristics</summary>
+                <div class="grid" style="margin-top:12px">
+                    <div>
+                        <label for="site-chapter-title-selector">Chapter title selector</label>
+                        <input id="site-chapter-title-selector" type="text" placeholder=".chapter-title">
+                    </div>
+                    <div>
+                        <label for="site-content-selector">Content selector</label>
+                        <input id="site-content-selector" type="text" placeholder=".chapter-content">
+                    </div>
+                    <div>
+                        <label for="site-series-url-selector">Series URL selector</label>
+                        <input id="site-series-url-selector" type="text" placeholder="link[rel=canonical]">
+                    </div>
+                    <div>
+                        <label for="site-chapter-link-selector">Chapter link selector</label>
+                        <input id="site-chapter-link-selector" type="text" placeholder=".chapter-list a">
+                    </div>
+                </div>
+                <div class="hint" style="margin-top:10px">
+                    Leave blank to use the generic heuristics: OpenGraph title, largest text container,
+                    and paragraph/scroll progress. A chapter number is read from the URL or title
+                    (<code>chapter 12</code>, <code>ch. 12.5</code>, <code>episode 12</code>).
+                </div>
+            </details>
+
+            <div class="form-actions">
+                <button type="submit" class="primary" id="save-site">Save site</button>
+                <button type="button" id="cancel-site">Cancel</button>
+            </div>
+            <div class="status" id="site-status" role="status"></div>
+        </form>
+    </section>
+
+    <section aria-labelledby="behavior-heading">
+        <div class="section-head">
+            <div>
+                <h2 id="behavior-heading">Behavior</h2>
+                <p>Progress is always written with a client timestamp so an idle tab cannot overwrite a newer phone session.</p>
+            </div>
+        </div>
+        <div class="row">
+            <div class="row-main">
+                <label for="auto-restore" style="margin:0">Restore remote position on page load</label>
+                <div class="row-sub">Jump to the position stored by your other device when it is at least the threshold ahead.</div>
+            </div>
+            <div class="row-actions">
+                <input id="auto-restore" type="checkbox">
+            </div>
+        </div>
+        <div class="row">
+            <div class="row-main">
+                <label for="restore-threshold" style="margin:0">Restore threshold</label>
+                <div class="row-sub">Minimum percentage difference before restoring the same chapter.</div>
+            </div>
+            <div class="row-actions" style="width:110px">
+                <input id="restore-threshold" type="number" min="0" max="100" step="1">
+            </div>
+        </div>
+    </section>
+
+    <section aria-labelledby="actions-heading">
+        <div class="section-head">
+            <div>
+                <h2 id="actions-heading">Configuration</h2>
+                <p>Export the config to copy it to another browser. Tokens are included, so keep the file private.</p>
+            </div>
+        </div>
+        <div class="form-actions">
+            <button type="button" class="primary" id="save-all">Save changes</button>
+            <button type="button" id="export-config">Export JSON</button>
+            <button type="button" id="import-config">Import JSON</button>
+            <button type="button" class="danger" id="reset-config">Reset</button>
+        </div>
+        <input id="import-file" type="file" accept="application/json" class="hidden">
+        <div class="status" id="global-status" role="status"></div>
+    </section>
+
+    <section aria-labelledby="help-heading">
+        <div class="section-head">
+            <div>
+                <h2 id="help-heading">How it works</h2>
+            </div>
+        </div>
+        <p style="margin-top:14px">
+            The extension only sends a progress entry when it is at least as far as the locally known
+            position. The server keeps the highest <code>updated_at</code>, so a browser tab left open
+            before you read on your phone is rejected with <code>409</code> and returns the newer entry instead.
+        </p>
+        <p style="margin-top:10px">
+            Percentage (0–100) and paragraph index are stored alongside the chapter number, not pixel
+            scroll values, so positions remain meaningful across desktop and mobile layouts.
+        </p>
+    </section>
+</main>
+
+<div class="modal hidden" id="pair-modal">
+    <div class="modal-card">
+        <h2>Pair with phone</h2>
+        <p class="hint">
+            Scan this QR with the Shiori app's pairing screen (any QR scanner app also works).
+            The code opens <code>shiori://pair</code> with this server's URL and token.
+        </p>
+        <img id="pair-qr" alt="Pairing QR code">
+        <details id="pair-token-details">
+            <summary>Show token instead</summary>
+            <div class="pair-token-row">
+                <input id="pair-token" type="text" readonly>
+                <button type="button" id="pair-copy">Copy</button>
+            </div>
+            <div class="hint">Manual fallback: paste this token together with the server URL in the app's Shiori Sync login.</div>
+        </details>
+        <div class="form-actions">
+            <button type="button" id="pair-close">Close</button>
+        </div>
+    </div>
+</div>
+
+<div class="toast" id="toast" role="status"></div>
+
+<script src="lib/shared.js"></script>
+<script src="options.js"></script>
+</body>
+</html>

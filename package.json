@@ -1,0 +1,13 @@
+{
+    "name": "shiori-reading-sync-extension",
+    "version": "0.1.0",
+    "private": true,
+    "description": "Browser extension that syncs exact reading progress to a self-hosted Shiori sync server",
+    "scripts": {
+        "build": "node scripts/build.mjs",
+        "test": "node --test test/"
+    },
+    "devDependencies": {
+        "qrcode-generator": "^2.0.4"
+    }
+}

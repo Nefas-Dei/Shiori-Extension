@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Shiori Reading Sync</title>
+    <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+<main>
+    <header>
+        <h1>Shiori Reading Sync</h1>
+        <span class="badge" id="badge">checking</span>
+    </header>
+
+    <dl>
+        <div>
+            <dt>Server</dt>
+            <dd id="tracker">—</dd>
+        </div>
+        <div>
+            <dt>Profile</dt>
+            <dd id="site">—</dd>
+        </div>
+        <div>
+            <dt>Chapter</dt>
+            <dd id="chapter">—</dd>
+        </div>
+        <div>
+            <dt>Known position</dt>
+            <dd id="position">—</dd>
+        </div>
+    </dl>
+
+    <div class="actions">
+        <button type="button" class="primary" id="sync" disabled>Sync now</button>
+        <button type="button" id="options">Options</button>
+    </div>
+
+    <p class="note" id="note">Progress is stored as chapter, percentage and paragraph index.</p>
+    <div class="status" id="status" role="status"></div>
+</main>
+
+<script src="lib/shared.js"></script>
+<script src="popup.js"></script>
+</body>
+</html>
