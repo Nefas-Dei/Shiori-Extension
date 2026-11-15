@@ -55,7 +55,7 @@ test('host normalization and matching cover subdomains and ports', () => {
     assert.equal(S.hostMatches('a.example.com', '*.example.com'), true);
 });
 
-test('config merge keeps built-ins, preserves custom data and puts generic last', () => {
+test('config merge keeps built-ins, drops presets and legacy generic, preserves user wildcards', () => {
     const config = S.mergeConfig({
         activeTrackerId: 'home',
         autoRestore: false,
@@ -65,7 +65,10 @@ test('config merge keeps built-ins, preserves custom data and puts generic last'
             { id: 'novelupdates', type: 'novelupdates', name: 'NU', enabled: true },
         ],
         sites: [
+            { id: 'novelupdates', type: 'preset', host: 'novelupdates.com', mode: 'series', name: 'NovelUpdates' },
             { id: 'reader', host: 'reader.example.com', mode: 'chapter', name: 'Reader' },
+            { id: 'generic', type: 'generic', host: '*', mode: 'chapter', name: 'Generic', enabled: false },
+            { id: 'site-wild', host: '*', mode: 'chapter', name: 'My wildcard' },
         ],
     });
 
@@ -74,10 +77,17 @@ test('config merge keeps built-ins, preserves custom data and puts generic last'
     assert.equal(config.restoreThresholdPercent, 100);
     assert.equal(config.trackers.find((t) => t.id === 'home').baseUrl, 'https://sync.test');
     assert.ok(config.trackers.some((t) => t.type === 'custom'));
-    assert.ok(config.trackers.some((t) => t.type === 'novelupdates'));
-    assert.ok(config.trackers.some((t) => t.type === 'novellist'));
-    assert.equal(config.sites.at(-1).id, 'generic');
+    // Catalog placeholders (NovelUpdates/NovelList) are migrated away.
+    assert.equal(config.trackers.some((t) => t.type === 'novelupdates'), false);
+    assert.equal(config.trackers.some((t) => t.type === 'novellist'), false);
+    // The extension must not run on unlisted sites: no presets and no legacy
+    // generic auto-detect profile. User-added wildcards are kept, last.
+    assert.equal(config.sites.some((s) => s.type === 'preset'), false);
+    assert.equal(config.sites.some((s) => s.id === 'generic'), false);
+    assert.equal(config.sites.at(-1).id, 'site-wild');
     assert.equal(config.sites.find((s) => s.id === 'reader').host, 'reader.example.com');
+    // Fresh configs start with no sites at all.
+    assert.deepEqual(S.mergeConfig(null).sites, []);
 });
 
 test('progress comparison is monotonic per chapter', () => {
@@ -87,6 +97,42 @@ test('progress comparison is monotonic per chapter', () => {
     assert.equal(S.isAhead(entry(1, 40), entry(1, 80)), false);
     assert.equal(S.isAhead(entry(0, 10), null), true);
     assert.equal(S.isAhead(null, entry(1, 10)), false);
+});
+
+test('series slugs come from the URL so chapter and series pages agree', () => {
+    // Real-world shapes: novelping.com hosts chapters under /book/ and the
+    // series index under /novel/. Both must reduce to the same key, while the
+    // title fallback would differ ("The Author's POV | NovelPing").
+    assert.equal(S.seriesSlugFromUrl('https://novelping.com/book/the-authors-pov/chapter-690'), 'the-authors-pov');
+    assert.equal(S.seriesSlugFromUrl('https://novelping.com/novel/the-authors-pov'), 'the-authors-pov');
+    // Slug-only chapter URLs (chapter-epilogue-...) still strip cleanly.
+    assert.equal(
+        S.seriesSlugFromUrl('https://novelping.com/book/the-authors-pov/chapter-epilogue-the-authors-pov'),
+        'the-authors-pov',
+    );
+    // RoyalRoad keeps the novel slug inside its chapter URLs.
+    assert.equal(
+        S.seriesSlugFromUrl('https://www.royalroad.com/fiction/59372/the-wandering-inn/chapter/78901234'),
+        'the-wandering-inn',
+    );
+    // Numeric-only or container-only paths have no series name: empty result,
+    // callers fall back to the page title.
+    assert.equal(S.seriesSlugFromUrl('https://site.test/novel/12345'), '');
+    assert.equal(S.seriesSlugFromUrl('https://site.test/book'), '');
+    assert.equal(S.seriesSlugFromUrl('not a url'), '');
+});
+
+test('makeEntry refuses pages without a usable chapter number', () => {
+    const page = {
+        site: 'example.com',
+        seriesKey: 'my-novel',
+        seriesTitle: 'My Novel',
+        seriesUrl: 'https://example.com/book/my-novel',
+        chapter: 0,
+        chapterTitle: '',
+        chapterUrl: 'https://example.com/novel/my-novel',
+    };
+    assert.equal(S.makeEntry(page, { scrollPercent: 40, paragraphIndex: -1 }, 'browser'), null);
 });
 
 test('makeEntry clamps percentage and keeps the client timestamp', () => {
@@ -193,4 +239,14 @@ test('short chapters complete when their bottom passes the viewport', () => {
     const progress = S.calculateProgress(content, 1000, 600);
     assert.equal(progress.scrollPercent, 100);
     assert.equal(progress.paragraphIndex, -1);
+});
+
+test('generateToken returns unique 32-char lowercase hex strings', () => {
+    const tokens = new Set();
+    for (let i = 0; i < 10; i++) {
+        const token = S.generateToken();
+        assert.match(token, /^[0-9a-f]{32}$/);
+        tokens.add(token);
+    }
+    assert.equal(tokens.size, 10);
 });

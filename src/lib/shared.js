@@ -23,6 +23,10 @@
         '.read-content',
         '#chapter-content',
         '#chapter-body',
+        // NovelPing-family readers render the chapter text into #chr-content
+        // (their <main> wraps the whole reader; the nesting rule in
+        // findContentElement picks the specific element over the wrapper).
+        '#chr-content',
         '#content',
         'main',
     ];
@@ -39,45 +43,18 @@
     const GENERIC_CHAPTER_TITLE_SELECTORS = [
         '.chapter-title',
         '.chapter__title',
+        // NovelPing-family readers mark the chapter heading with .chr-title
+        // (.chapter-title does not exist there and h1 is the series title).
+        '.chr-title',
         '.entry-title',
         'h1',
     ];
 
-    const DEFAULT_SITES = [
-        {
-            id: 'novelupdates',
-            type: 'preset',
-            name: 'NovelUpdates',
-            enabled: true,
-            host: 'novelupdates.com',
-            mode: 'series',
-            titleSelector: 'h1, .seriestitlenu',
-            seriesUrlSelector: 'link[rel="canonical"]',
-            chapterLinkSelector: '#myTable a, .chapterlist a, a[href*="chapter"]',
-        },
-        {
-            id: 'novellist',
-            type: 'preset',
-            name: 'NovelList',
-            enabled: true,
-            host: 'novellist.co',
-            mode: 'series',
-            titleSelector: 'h1',
-            seriesUrlSelector: 'link[rel="canonical"]',
-            chapterLinkSelector: 'a[href*="/chapter"], a[href*="/read/"]',
-        },
-        {
-            id: 'generic',
-            type: 'generic',
-            name: 'Generic / auto-detect',
-            enabled: false,
-            host: '*',
-            mode: 'chapter',
-            contentSelectors: GENERIC_CONTENT_SELECTORS,
-            titleSelectors: GENERIC_TITLE_SELECTORS,
-            chapterTitleSelectors: GENERIC_CHAPTER_TITLE_SELECTORS,
-        },
-    ];
+    // No default site profiles on purpose. The extension must not initialize on
+    // sites the user has not explicitly listed (default presets or user-added
+    // profiles) — some sites are hostile to injected scripts. Wildcard
+    // auto-detect ("*") remains available for users who deliberately add it.
+    const DEFAULT_SITES = [];
 
     const DEFAULT_TRACKERS = [
         {
@@ -87,20 +64,6 @@
             baseUrl: '',
             token: '',
             enabled: true,
-        },
-        {
-            id: 'novelupdates',
-            type: 'novelupdates',
-            name: 'NovelUpdates',
-            enabled: false,
-            note: 'Chapter-level mirroring is handled by the Shiori app. Add a custom server for exact position sync.',
-        },
-        {
-            id: 'novellist',
-            type: 'novellist',
-            name: 'NovelList',
-            enabled: false,
-            note: 'Chapter-level mirroring is handled by the Shiori app. Add a custom server for exact position sync.',
         },
     ];
 
@@ -123,8 +86,16 @@
         const defaults = defaultConfig();
         if (!raw || typeof raw !== 'object') return defaults;
 
-        const trackers = Array.isArray(raw.trackers) && raw.trackers.length > 0
-            ? raw.trackers.map((tracker) => ({
+        // Migration: NovelUpdates/NovelList were catalogs, not reading sites.
+        // Drop their preset site profiles and placeholder tracker cards from
+        // configs saved by older versions.
+        const migratedTrackers = (Array.isArray(raw.trackers) ? raw.trackers : [])
+            .filter((tracker) => tracker.type !== 'novelupdates' && tracker.type !== 'novellist');
+        const migratedSites = (Array.isArray(raw.sites) ? raw.sites : [])
+            .filter((site) => site.type !== 'preset' && site.id !== 'generic');
+
+        const trackers = migratedTrackers.length > 0
+            ? migratedTrackers.map((tracker) => ({
                 ...tracker,
                 id: String(tracker.id || '').trim() || `tracker-${Math.random().toString(36).slice(2)}`,
                 type: tracker.type || 'custom',
@@ -142,8 +113,8 @@
             }
         }
 
-        const sites = Array.isArray(raw.sites) && raw.sites.length > 0
-            ? raw.sites.map((site) => ({
+        const sites = migratedSites.length > 0
+            ? migratedSites.map((site) => ({
                 ...site,
                 id: String(site.id || '').trim() || `site-${Math.random().toString(36).slice(2)}`,
                 type: site.type || 'custom',
@@ -152,14 +123,12 @@
                 mode: site.mode === 'series' ? 'series' : 'chapter',
                 enabled: site.enabled !== false,
             }))
-            : defaults.sites;
+            : clone(defaults.sites);
 
-        // Keep the generic fallback last; specific hosts must win.
-        const generic = sites.filter((site) => site.host === '*' || site.id === 'generic');
-        const specific = sites.filter((site) => !(site.host === '*' || site.id === 'generic'));
-        if (!generic.some((site) => site.id === 'generic')) {
-            generic.push(clone(defaults.sites.find((site) => site.id === 'generic')));
-        }
+        // Keep wildcard fallbacks last; specific hosts must win.
+        const generic = sites.filter((site) => site.host === '*');
+        const specific = sites.filter((site) => site.host !== '*');
+        const orderedSites = [...specific, ...generic];
 
         const activeTrackerId = trackers.some((tracker) => tracker.id === raw.activeTrackerId)
             ? raw.activeTrackerId
@@ -173,7 +142,7 @@
                 ? Math.max(0, Math.min(100, Number(raw.restoreThresholdPercent)))
                 : 3,
             trackers,
-            sites: specific.concat(generic),
+            sites: orderedSites,
         };
     }
 
@@ -311,29 +280,57 @@
     function findContentElement(document, site) {
         const selectors = site?.contentSelectors || (site?.contentSelector ? [site.contentSelector] : []);
         const candidates = selectors.length > 0 ? selectors : GENERIC_CONTENT_SELECTORS;
-        let best = null;
-        let bestLength = 0;
+        const matches = [];
         for (const selector of candidates) {
             for (const element of document.querySelectorAll(selector)) {
                 const length = (element.textContent || '').trim().length;
-                if (length > bestLength) {
-                    best = element;
-                    bestLength = length;
-                }
+                if (length > 0) matches.push({ element, length });
             }
         }
-        return best;
+        if (matches.length === 0) return null;
+        // When candidates nest (a wrapper like <main> contains the real chapter
+        // element), the most specific match wins: a plain longest-text rule
+        // always favours the wrapper, which misplaces scroll percentages and
+        // paragraph indexes. Among equally specific matches the largest wins.
+        const nested = matches.filter((m) =>
+            matches.some((other) => other !== m && other.element.contains(m.element))
+        );
+        const pool = nested.length > 0 ? nested : matches;
+        return pool.reduce((a, b) => (b.length >= a.length ? b : a)).element;
     }
 
-    function seriesKeyFromUrl(url) {
+    // URL segments that describe a section of the site rather than a series
+    // (novelping.com/book/, royalroad.com/fiction/, ...). The last remaining
+    // segment must never be one of these.
+    const GENERIC_PATH_SEGMENTS = new Set([
+        'book', 'books', 'novel', 'novels', 'read', 'reader', 'reading',
+        'fiction', 'series', 'story', 'stories', 'title', 'work', 'works',
+        'chapters', 'chapterlist', 'chapter-list', 'tableofcontents', 'toc',
+    ]);
+
+    /**
+     * Derive a stable series identity from a URL: drop trailing chapter-ish
+     * and numeric segments, then use the last remaining path segment.
+     *
+     * This is more stable than slugifying the page title, because og:titles
+     * leak site suffixes ("The Author's POV | NovelPing" -> a different key on
+     * the series page than on its chapter pages) and chapter subtitles. For
+     * the same novel, `/book/{slug}/chapter-690` and `/novel/{slug}` both
+     * reduce to "{slug}", so chapter pages and the series index agree.
+     */
+    function seriesSlugFromUrl(url) {
         try {
-            const parsed = new URL(url);
-            const segments = parsed.pathname
+            const segments = new URL(url).pathname
                 .split('/')
                 .filter(Boolean)
-                .filter((segment) => !/^(?:chapter|ch|read|episode|part)[-_]?\d/i.test(segment))
-                .filter((segment) => !/^\d+(?:\.\d+)?$/.test(segment));
-            return `${parsed.hostname.replace(/^www\./, '')}/${segments.slice(0, 3).join('/')}`;
+                .filter((segment) => !/^(?:chapter|ch|read|reader|episode|ep|part)s?(?:[-_].*)?$/i.test(segment))
+                .filter((segment) => !/^\d+(?:\.\d+)?$/.test(segment))
+                .filter((segment) => !/^[a-z]{1,2}$/i.test(segment));
+            const last = segments[segments.length - 1];
+            if (!last) return '';
+            const normalized = last.toLowerCase().replace(/\.[a-z0-9]+$/, '');
+            if (GENERIC_PATH_SEGMENTS.has(normalized)) return '';
+            return normalized;
         } catch {
             return '';
         }
@@ -373,7 +370,7 @@
 
         const seriesKey = site?.seriesKeySelector
             ? safeText(document.querySelector(site.seriesKeySelector)?.textContent)
-            : (slugify(seriesTitle) || seriesKeyFromUrl(seriesUrl));
+            : (seriesSlugFromUrl(seriesUrl) || seriesSlugFromUrl(url) || slugify(seriesTitle));
 
         return {
             mode: 'chapter',
@@ -393,7 +390,7 @@
         return {
             mode: 'series',
             site: normalizeSite(url),
-            seriesKey: slugify(seriesTitle) || seriesKeyFromUrl(url),
+            seriesKey: seriesSlugFromUrl(url) || slugify(seriesTitle),
             seriesTitle: seriesTitle || url,
             seriesUrl: canonicalUrl(document, url) || url,
             chapterLinks: collectChapterLinks(document, site, url),
@@ -616,6 +613,13 @@
         };
     }
 
+    /**
+     * Looks up the server position for a series. The server matches with a
+     * LIKE query, so entries are compared exactly first and then tolerantly:
+     * an older bind may have stored a slug variant of the same key (for
+     * example a title slug with a site suffix), and both directions are
+     * covered by prefix comparison.
+     */
     async function findProgress(tracker, site, seriesKey) {
         const query = new URLSearchParams({
             site,
@@ -623,8 +627,15 @@
             limit: '100',
         });
         const result = await apiRequest(tracker, `/progress?${query.toString()}`);
-        const entries = result.data?.entries || [];
-        return entries.find((entry) => entry.site === site && entry.series_key === seriesKey) || null;
+        const entries = (result.data?.entries || []).filter((entry) => Number(entry.chapter) >= 1);
+        const candidates = entries.filter((entry) => entry.site === site);
+        const exact = candidates.find((entry) => entry.series_key === seriesKey);
+        if (exact) return exact;
+        const needle = seriesKey.toLowerCase();
+        return candidates.find((entry) => {
+            const stored = String(entry.series_key || '').toLowerCase();
+            return stored.startsWith(needle) || needle.startsWith(stored);
+        }) || null;
     }
 
     async function listProgress(tracker, query = '') {
@@ -642,20 +653,44 @@
         return response.json();
     }
 
+    /**
+     * Builds a server entry from the extracted page. Returns null when the
+     * page is not a usable chapter (no chapter number detected): pushing a
+     * chapter-0 entry would poison the server row and block real progress.
+     */
     function makeEntry(page, progress, device) {
+        const chapter = Number(page.chapter);
+        if (!Number.isFinite(chapter) || chapter < 1) return null;
+        const percent = clampPercent(progress.scrollPercent);
         return {
             site: page.site,
             series_key: page.seriesKey,
             series_title: page.seriesTitle,
             series_url: page.seriesUrl,
-            chapter: Number(page.chapter) || 0,
+            chapter,
             chapter_title: page.chapterTitle,
             chapter_url: page.chapterUrl,
-            scroll_percent: clampPercent(progress.scrollPercent),
+            scroll_percent: percent,
+            // Explicit completion signal: the phone derives chapter read state
+            // from this, so a 100% chapter must not be left as "reading".
+            status: percent >= 100 ? 'completed' : 'reading',
             paragraph_index: Number.isInteger(progress.paragraphIndex) ? progress.paragraphIndex : -1,
             updated_at: Date.now(),
             device: device || 'browser',
         };
+    }
+
+    /**
+     * Generates a random sync token (32 lowercase hex chars). Tokens are data
+     * buckets on the server, not registered secrets - the first client to use
+     * one defines it, so generating here is safe.
+     */
+    function generateToken() {
+        const bytes = new Uint8Array(16);
+        crypto.getRandomValues(bytes);
+        let out = '';
+        for (let i = 0; i < bytes.length; i++) out += bytes[i].toString(16).padStart(2, '0');
+        return out;
     }
 
     const Shiori = {
@@ -669,7 +704,9 @@
         hostMatches,
         findSite,
         getActiveTracker,
+        generateToken,
         slugify,
+        seriesSlugFromUrl,
         safeText,
         chapterNumberFromText,
         stripChapterFromTitle,
