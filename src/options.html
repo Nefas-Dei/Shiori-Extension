@@ -41,12 +41,20 @@
                 </div>
                 <div class="full">
                     <label for="tracker-token">API token</label>
-                    <input id="tracker-token" type="password" placeholder="Token shared with the Shiori app" required>
-                    <div class="hint">Stored in this browser profile only. Never sent anywhere except the server above.</div>
+                    <div class="pair-token-row">
+                        <input id="tracker-token" type="password" placeholder="Generated automatically" required>
+                        <button type="button" id="generate-token">Generate</button>
+                    </div>
+                    <div class="hint">
+                        A random token is generated for you and is your data bucket on the server.
+                        Save the server, then use <strong>Pair phone</strong> to send it to the Shiori app by QR —
+                        or copy the token there manually.
+                    </div>
                 </div>
             </div>
             <div class="form-actions">
                 <button type="submit" class="primary" id="save-tracker">Save server</button>
+                <button type="button" id="pair-from-form">Pair phone</button>
                 <button type="button" id="test-tracker">Test connection</button>
                 <button type="button" id="cancel-tracker">Cancel</button>
             </div>
@@ -58,7 +66,7 @@
         <div class="section-head">
             <div>
                 <h2 id="sites-heading">Reading sites</h2>
-                <p>Built-in profiles cover NovelUpdates and NovelList. Add the site you actually read on for exact position tracking. The generic fallback is off by default to avoid tracking unrelated pages.</p>
+                <p>The extension stays completely idle on every site until you list it here. Add the sites you read on so tracking activates only where you want it.</p>
             </div>
             <button type="button" id="add-site">Add site</button>
         </div>
@@ -75,7 +83,7 @@
                 <div>
                     <label for="site-host">Host</label>
                     <input id="site-host" type="text" placeholder="reader.example.com" required>
-                    <div class="hint">Subdomains are included automatically. Use <code>*</code> only for the generic fallback.</div>
+                    <div class="hint">Subdomains are included automatically. Enter <code>*</code> to match every site (the extension will then use its heuristics anywhere — use with care).</div>
                 </div>
                 <div>
                     <label for="site-mode">Page type</label>
@@ -191,8 +199,8 @@
     <div class="modal-card">
         <h2>Pair with phone</h2>
         <p class="hint">
-            Scan this QR with the Shiori app's pairing screen (any QR scanner app also works).
-            The code opens <code>shiori://pair</code> with this server's URL and token.
+            In the Shiori app open <em>Settings → Tracking → Shiori Sync → Scan QR code</em> and scan this.
+            Any QR scanner app also works — it opens <code>shiori://pair</code> with this server's URL and token.
         </p>
         <img id="pair-qr" alt="Pairing QR code">
         <details id="pair-token-details">

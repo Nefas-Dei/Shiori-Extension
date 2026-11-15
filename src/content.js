@@ -170,6 +170,11 @@
 
         if (remoteAhead && config.autoRestore) {
             adoptRemotePosition(remote, local);
+        } else if (config.autoRestore && local && Number(local.chapter) === Number(page.chapter)) {
+            // The server is not ahead, but this browser has its own position for
+            // this chapter (e.g. the page was just reloaded): resume it instead
+            // of dropping the user back at the top.
+            resumeLocalPosition(local);
         } else if (remote && !local) {
             // Nothing local yet. Remember the server position so the first scroll
             // doesn't push a lower value with a newer timestamp.
@@ -180,8 +185,20 @@
         debug('chapter tracking ready', { page, remote, local });
     }
 
-    function adoptRemotePosition(remote, local) {
-        if (!remote) return;
+    function resumeLocalPosition(position) {
+        const percent = Number(position.scroll_percent) || 0;
+        if (percent < Math.max(1, config.restoreThresholdPercent)) return;
+        suppressUntil = Date.now() + 2200;
+        const appliedParagraph = Number.isInteger(position.paragraph_index) && position.paragraph_index >= 0;
+        S.scrollToProgress(
+            contentElement,
+            percent,
+            appliedParagraph ? position.paragraph_index : -1,
+        );
+        showToast(`Resumed at ${formatPercent(percent)} of this chapter.`);
+    }
+
+    function adoptRemotePosition(remote, local) {        if (!remote) return;
         const sameChapter = Number(remote.chapter) === Number(page.chapter);
         const significant = S.progressDeltaIsSignificant(remote, local, config.restoreThresholdPercent);
 
@@ -287,6 +304,10 @@
             window.scrollY,
         );
         const next = S.makeEntry(page, progress, 'browser');
+        // makeEntry refuses pages without a usable chapter number (for
+        // example a series index under a "chapter" profile): pushing a
+        // chapter-0 entry would poison the server row.
+        if (!next) return;
 
         // Keep progress monotonic for the same chapter: re-reading backwards
         // should not overwrite where the other device already is. A newer chapter
@@ -344,6 +365,7 @@
                 chapter_title: text,
                 chapter_url: href,
                 scroll_percent: 0,
+                status: 'reading',
                 paragraph_index: 0,
                 updated_at: Date.now(),
                 device: 'browser',
@@ -383,6 +405,15 @@
     const runtime = globalThis.browser?.runtime ?? globalThis.chrome?.runtime;
     runtime?.onMessage?.addListener((message, _sender, sendResponse) => {
         if (message?.type === 'shiori:sync-now') {
+            const syncError = !page
+                ? 'This page is not being tracked. Open a chapter page first.'
+                : !(Number(page.chapter) >= 1)
+                    ? 'Could not detect a chapter number on this page. Open a chapter and try again.'
+                    : null;
+            if (syncError) {
+                sendResponse({ ok: false, error: syncError });
+                return true;
+            }
             flushProgress(true)
                 .then(() => sendResponse({ ok: true, progress: currentLocal }))
                 .catch((error) => sendResponse({ ok: false, error: error.message }));

@@ -50,11 +50,35 @@
         return `Ch. ${Number.isInteger(chapter) ? chapter : chapter.toFixed(1)} · ${percent}%`;
     }
 
+    function formatSyncedAt(progress) {
+        const ts = Number(progress?.updated_at);
+        if (!ts) return null;
+        const diff = Math.max(0, Date.now() - ts);
+        const mins = Math.floor(diff / 60000);
+        let relative;
+        if (mins < 1) relative = 'just now';
+        else if (mins < 60) relative = `${mins} min ago`;
+        else if (mins < 1440) relative = `${Math.floor(mins / 60)} h ago`;
+        else if (mins < 43200) relative = `${Math.floor(mins / 1440)} d ago`;
+        else relative = new Date(ts).toLocaleDateString();
+        const device = progress.device === 'android' ? 'phone' : 'browser';
+        return `${relative} · ${device}`;
+    }
+
+    function setValue(id, text, muted) {
+        const node = $(id);
+        node.textContent = text;
+        node.classList.toggle('muted', !!muted);
+    }
+
     async function refreshStatus() {
         if (!activeTab?.id) return;
         try {
             const status = await sendTabMessage(activeTab.id, { type: 'shiori:status' });
-            if (!status?.ok) return;
+            if (!status?.ok) {
+                setStatus('Could not read this page. Reload the tab and try again.', 'error');
+                return;
+            }
 
             if (!status.configured) {
                 setStatus('Configure a custom sync server in Options.', 'error');
@@ -71,7 +95,10 @@
                     ? `Ch. ${status.page.chapter}${status.page.chapterTitle ? ` — ${status.page.chapterTitle}` : ''}`
                     : (status.page.seriesTitle || '—');
             }
-            $('position').textContent = formatPosition(status.progress);
+            const hasProgress = !!status.progress;
+            setValue('position', hasProgress ? formatPosition(status.progress) : 'Not synced yet', !hasProgress);
+            const lastSync = formatSyncedAt(status.progress);
+            setValue('last-sync', lastSync || 'Not synced yet', !lastSync);
             $('sync').disabled = false;
             setBadge('ready', 'ok');
             setStatus(status.site.mode === 'series'
@@ -92,7 +119,8 @@
         try {
             const result = await sendTabMessage(activeTab.id, { type: 'shiori:sync-now' });
             if (!result?.ok) throw new Error(result?.error || 'Sync failed');
-            $('position').textContent = formatPosition(result.progress);
+            setValue('position', formatPosition(result.progress), !result.progress);
+            setValue('last-sync', formatSyncedAt(result.progress) || 'just now · browser', false);
             setStatus('Progress sent to the sync server.', 'ok');
         } catch (error) {
             setStatus(error.message || 'Sync failed.', 'error');
@@ -125,10 +153,7 @@
         }
 
         $('sync').addEventListener('click', syncNow);
-        $('options').addEventListener('click', () => {
-            if (api === globalThis.browser) api.runtime.openOptionsPage();
-            else api.runtime.openOptionsPage();
-        });
+        $('options').addEventListener('click', () => api.runtime.openOptionsPage());
     }
 
     main().catch((error) => {
