@@ -41,10 +41,6 @@
         node.className = `status${tone ? ` ${tone}` : ''}`;
     }
 
-    function trackerTypeLabel(type) {
-        return type === 'custom' ? 'custom server' : type;
-    }
-
     function renderTrackers() {
         const list = $('tracker-list');
         list.replaceChildren();
@@ -54,11 +50,9 @@
             const main = el('div', { className: 'row-main' }, [
                 el('div', { className: 'row-title', text: tracker.name }),
                 el('div', { className: 'row-sub' }, [
-                    el('span', { className: 'badge', text: trackerTypeLabel(tracker.type) }),
+                    el('span', { className: 'badge', text: 'custom server' }),
                     ' ',
-                    tracker.type === 'custom'
-                        ? (tracker.baseUrl || 'Server URL not set')
-                        : (tracker.note || 'Chapter-level sync is handled by the Shiori app.'),
+                    tracker.baseUrl || 'Server URL not set',
                 ]),
             ]);
 
@@ -112,7 +106,8 @@
         $('tracker-id').value = tracker?.id || '';
         $('tracker-name').value = tracker?.name || '';
         $('tracker-url').value = tracker?.baseUrl || '';
-        $('tracker-token').value = tracker?.token || '';
+        // New servers get a fresh token out of the box; editing keeps the stored one.
+        $('tracker-token').value = tracker?.token || S.generateToken();
         setStatus('tracker-status', '');
         trackerForm.classList.remove('hidden');
         $('tracker-name').focus();
@@ -144,9 +139,18 @@
         const baseUrl = normalizeBaseUrl($('tracker-url').value);
         const token = $('tracker-token').value.trim();
 
-        if (!name) return setStatus('tracker-status', 'Give the server a name.', 'error');
-        if (!baseUrl) return setStatus('tracker-status', 'Enter a valid http(s) server URL.', 'error');
-        if (!token) return setStatus('tracker-status', 'Enter the token used by the Shiori app (its identity on the server).', 'error');
+        if (!name) {
+            setStatus('tracker-status', 'Give the server a name.', 'error');
+            return null;
+        }
+        if (!baseUrl) {
+            setStatus('tracker-status', 'Enter a valid http(s) server URL.', 'error');
+            return null;
+        }
+        if (!token) {
+            setStatus('tracker-status', 'Enter the token used by the Shiori app (its identity on the server).', 'error');
+            return null;
+        }
 
         const tracker = { id: id || `custom-${crypto.randomUUID?.() || Date.now().toString(36)}`, type: 'custom', name, baseUrl, token, enabled: true };
         const index = config.trackers.findIndex((item) => item.id === tracker.id);
@@ -158,6 +162,7 @@
         renderTrackers();
         closeTrackerForm();
         toast('Server saved');
+        return tracker;
     }
 
     async function testTracker() {
@@ -199,6 +204,19 @@
         $('pair-modal').classList.remove('hidden');
     }
 
+    /**
+     * Pairs straight from the add/edit form: validates and saves whatever is in the
+     * form (generating a token first if the field is empty), then shows the QR.
+     */
+    async function pairFromForm() {
+        if (!$('tracker-token').value.trim()) {
+            $('tracker-token').value = S.generateToken();
+        }
+        const saved = await saveTrackerFromForm({ preventDefault() {} });
+        if (!saved) return;
+        await pairWithPhone(saved);
+    }
+
     function closePairModal() {
         $('pair-modal').classList.add('hidden');
         $('pair-qr').removeAttribute('src');
@@ -206,7 +224,7 @@
     }
 
     function siteTypeLabel(site) {
-        if (site.id === 'generic' || site.host === '*') return 'fallback';
+        if (site.host === '*') return 'fallback';
         return site.type || 'custom';
     }
 
@@ -215,7 +233,6 @@
         list.replaceChildren();
 
         for (const site of config.sites) {
-            const isGeneric = site.id === 'generic' || site.host === '*';
             const main = el('div', { className: 'row-main' }, [
                 el('div', { className: 'row-title', text: site.name }),
                 el('div', { className: 'row-sub' }, [
@@ -233,9 +250,6 @@
             actions.appendChild(el('button', {
                 type: 'button',
                 text: site.enabled === false ? 'Enable' : 'Disable',
-                title: isGeneric && site.host === '*' && site.enabled === false
-                    ? 'Enable this to track any HTTP(S) article page with the generic heuristics.'
-                    : '',
                 onclick: async () => {
                     site.enabled = site.enabled === false;
                     config = await S.saveConfig(config);
@@ -243,25 +257,23 @@
                 },
             }));
 
-            if (!isGeneric) {
-                actions.appendChild(el('button', {
-                    type: 'button',
-                    text: 'Edit',
-                    onclick: () => openSiteForm(site),
-                }));
-                actions.appendChild(el('button', {
-                    type: 'button',
-                    className: 'danger',
-                    text: 'Remove',
-                    onclick: async () => {
-                        if (!confirm(`Remove ${site.name}?`)) return;
-                        config.sites = config.sites.filter((item) => item.id !== site.id);
-                        config = await S.saveConfig(config);
-                        renderSites();
-                        toast('Site removed');
-                    },
-                }));
-            }
+            actions.appendChild(el('button', {
+                type: 'button',
+                text: 'Edit',
+                onclick: () => openSiteForm(site),
+            }));
+            actions.appendChild(el('button', {
+                type: 'button',
+                className: 'danger',
+                text: 'Remove',
+                onclick: async () => {
+                    if (!confirm(`Remove ${site.name}?`)) return;
+                    config.sites = config.sites.filter((item) => item.id !== site.id);
+                    config = await S.saveConfig(config);
+                    renderSites();
+                    toast('Site removed');
+                },
+            }));
 
             list.appendChild(el('div', { className: 'row' }, [main, actions]));
         }
@@ -383,6 +395,11 @@
         $('add-tracker').addEventListener('click', () => openTrackerForm(null));
         $('cancel-tracker').addEventListener('click', closeTrackerForm);
         $('test-tracker').addEventListener('click', testTracker);
+        $('generate-token').addEventListener('click', () => {
+            $('tracker-token').value = S.generateToken();
+            setStatus('tracker-status', 'New token generated. Save, then re-pair any phone that used the old one.', 'ok');
+        });
+        $('pair-from-form').addEventListener('click', pairFromForm);
         trackerForm.addEventListener('submit', saveTrackerFromForm);
 
         $('pair-close').addEventListener('click', closePairModal);

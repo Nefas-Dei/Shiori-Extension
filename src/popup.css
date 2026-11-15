@@ -95,6 +95,10 @@ dd {
     overflow-wrap: anywhere;
 }
 
+dd.muted {
+    color: var(--muted);
+}
+
 .actions {
     display: flex;
     gap: 8px;
